@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claim Activity Docket</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --navy: #1B2A4A;
+    --navy-light: #2C4066;
+    --parchment: #EFE7D8;
+    --parchment-dark: #E0D4BC;
+    --cream: #FAF7F0;
+    --amber: #B8863C;
+    --amber-light: #D4A857;
+    --ink: #2A2E35;
+    --ink-soft: #5A6270;
+    --line: #D8CCB0;
+    --red: #A8452F;
+    --green: #4B6E4E;
+
+    --cat-email: #3E6B8A;
+    --cat-demand: #A8452F;
+    --cat-spol: #7A5C9E;
+    --cat-litigation: #B8863C;
+    --cat-appraisal: #4B6E4E;
+    --cat-carrier: #2C4066;
+    --cat-other: #6B6355;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--cream);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:28px 20px 80px;}
+
+  /* Header */
+  header.top{
+    display:flex;align-items:flex-end;justify-content:space-between;
+    border-bottom:2px solid var(--navy);
+    padding-bottom:14px;margin-bottom:22px;flex-wrap:wrap;gap:10px;
+  }
+  .brand{display:flex;flex-direction:column;gap:2px;}
+  .brand .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--amber);font-weight:600;
+  }
+  .brand h1{
+    font-family:'Source Serif 4',serif;font-size:28px;margin:0;color:var(--navy);
+    font-weight:700;letter-spacing:-.01em;
+  }
+  .date-nav{display:flex;align-items:center;gap:8px;}
+  .date-nav button{
+    background:none;border:1px solid var(--line);color:var(--navy);
+    width:32px;height:32px;border-radius:4px;cursor:pointer;font-size:15px;
+  }
+  .date-nav button:hover{background:var(--parchment);}
+  .date-display{
+    font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink);
+    min-width:150px;text-align:center;
+  }
+  .date-display .today-pill{
+    display:inline-block;margin-left:6px;font-size:10px;background:var(--navy);
+    color:#fff;padding:1px 6px;border-radius:10px;letter-spacing:.05em;
+  }
+
+  /* View tabs */
+  .tabs{display:flex;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--line);}
+  .tabs button{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.05em;
+    text-transform:uppercase;background:none;border:none;padding:9px 4px;
+    margin-right:22px;color:var(--ink-soft);cursor:pointer;position:relative;
+    border-bottom:2px solid transparent;top:1px;
+  }
+  .tabs button.active{color:var(--navy);border-bottom-color:var(--amber);font-weight:600;}
+
+  /* Tally strip */
+  .tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin-bottom:22px;}
+  .tally-card{
+    background:#fff;border:1px solid var(--line);border-left:3px solid var(--cat-color,var(--navy));
+    border-radius:3px;padding:10px 12px;cursor:pointer;transition:transform .1s;
+  }
+  .tally-card:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(27,42,74,.08);}
+  .tally-card.active{background:var(--parchment);}
+  .tally-card .num{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;color:var(--navy);}
+  .tally-card .lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;}
+
+  /* Quick add */
+  .docket-panel{background:#fff;border:1px solid var(--line);border-radius:5px;margin-bottom:20px;}
+  .panel-head{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-soft);padding:10px 16px;border-bottom:1px solid var(--line);background:var(--parchment);
+    border-radius:5px 5px 0 0;
+  }
+  .add-form{display:flex;flex-wrap:wrap;gap:10px;padding:14px 16px;align-items:flex-end;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
+  select, input[type=text], input[type=number]{
+    font-family:'Inter',sans-serif;font-size:13px;padding:7px 9px;border:1px solid var(--line);
+    border-radius:3px;background:var(--cream);color:var(--ink);
+  }
+  select:focus, input:focus{outline:2px solid var(--amber-light);outline-offset:1px;}
+  .field.grow{flex:1;min-width:200px;}
+  .field.count input{width:64px;}
+  .btn{
+    font-family:'Inter',sans-serif;font-weight:600;font-size:13px;background:var(--navy);color:#fff;
+    border:none;padding:8px 18px;border-radius:3px;cursor:pointer;
+  }
+  .btn:hover{background:var(--navy-light);}
+  .btn.ghost{background:none;border:1px solid var(--line);color:var(--ink-soft);}
+  .btn.ghost:hover{background:var(--parchment);}
+  .btn.small{padding:4px 10px;font-size:12px;}
+
+  /* Docket list */
+  .docket-list{list-style:none;margin:0;padding:0;}
+  .docket-list li{
+    display:grid;grid-template-columns:44px 90px 1fr auto auto;gap:12px;align-items:center;
+    padding:11px 16px;border-bottom:1px solid var(--line);font-size:13.5px;
+  }
+  .docket-list li:last-child{border-bottom:none;}
+  .docket-list li:hover{background:var(--cream);}
+  .idx{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:12px;}
+  .badge{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.03em;
+    text-transform:uppercase;color:#fff;background:var(--cat-color,var(--navy));
+    padding:3px 7px;border-radius:3px;text-align:center;white-space:nowrap;
+  }
+  .desc{color:var(--ink);}
+  .desc .src{color:var(--ink-soft);font-size:11px;margin-left:6px;font-style:italic;}
+  .cnt{font-family:'IBM Plex Mono',monospace;color:var(--navy);font-weight:600;font-size:13px;}
+  .del{background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:15px;padding:2px 6px;}
+  .del:hover{color:var(--red);}
+  .empty-state{padding:40px 20px;text-align:center;color:var(--ink-soft);}
+  .empty-state .stamp{font-family:'Source Serif 4',serif;font-size:16px;color:var(--navy);margin-bottom:6px;}
+
+  /* Week view */
+  .week-grid{display:grid;grid-template-columns:110px 1fr;gap:6px 14px;padding:18px 16px;}
+  .week-row-label{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);align-self:center;}
+  .week-bars{display:flex;gap:4px;align-items:flex-end;height:26px;}
+  .week-bars .seg{border-radius:2px;height:100%;}
+  .week-total{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--navy);margin-left:8px;align-self:center;}
+  .week-legend{display:flex;flex-wrap:wrap;gap:10px 16px;padding:0 16px 16px;border-top:1px solid var(--line);padding-top:12px;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-soft);}
+  .legend-dot{width:9px;height:9px;border-radius:2px;}
+
+  /* Sync status */
+  .sync-bar{
+    display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);
+    margin-bottom:14px;font-family:'IBM Plex Mono',monospace;
+  }
+  .sync-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;}
+  .sync-dot.ok{background:var(--green);}
+  .sync-dot.off{background:var(--red);}
+
+  @media(max-width:600px){
+    .docket-list li{grid-template-columns:30px 70px 1fr auto;grid-template-areas:"idx cat desc del" "idx cat cnt del";}
+    .cnt{grid-column:3;justify-self:start;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <span class="eyebrow">Palm Partners &middot; Back Office Ops</span>
+      <h1>Claim Activity Docket</h1>
+    </div>
+    <div class="date-nav">
+      <button id="prevDay" title="Previous day">&#8249;</button>
+      <div class="date-display" id="dateDisplay">—</div>
+      <button id="nextDay" title="Next day">&#8250;</button>
+      <button id="todayBtn" class="btn ghost small" style="margin-left:6px;">Today</button>
+    </div>
+  </header>
+
+  <div class="sync-bar">
+    <span><span class="sync-dot off" id="syncDot"></span><span id="syncLabel">Checking connection…</span></span>
+    <span id="totalToday"></span>
+  </div>
+
+  <div class="tabs">
+    <button class="active" data-view="day">Today's Docket</button>
+    <button data-view="week">This Week</button>
+    <button data-view="all">Full Log</button>
+  </div>
+
+  <div class="tally" id="tallyStrip"></div>
+
+  <div class="docket-panel">
+    <div class="panel-head">Log an entry</div>
+    <div class="add-form">
+      <div class="field">
+        <label>Category</label>
+        <select id="catSelect"></select>
+      </div>
+      <div class="field grow">
+        <label>Description</label>
+        <input type="text" id="descInput" placeholder="e.g. Demand sent — claim #12345, GMA Law">
+      </div>
+      <div class="field count">
+        <label>Count</label>
+        <input type="number" id="countInput" value="1" min="1">
+      </div>
+      <button class="btn" id="addBtn">Log it</button>
+    </div>
+  </div>
+
+  <div id="viewArea"></div>
+
+</div>
+
+<script>
+/* ============ CONFIG ============
+   Paste your Supabase project details below.
+   Create a free project at https://supabase.com, then run the SQL
+   from setup.sql (provided alongside this file) in the SQL editor.
+==================================== */
+const SUPABASE_URL = 'PASTE_YOUR_SUPABASE_URL_HERE';
+const SUPABASE_ANON_KEY = 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE';
+
+const CATEGORIES = [
+  { id:'email',       label:'Emails',            color:'var(--cat-email)' },
+  { id:'demand',      label:'Demand Letters',    color:'var(--cat-demand)' },
+  { id:'spol',        label:'SPOL / Proof of Loss', color:'var(--cat-spol)' },
+  { id:'litigation',  label:'Litigation Handoff',color:'var(--cat-litigation)' },
+  { id:'appraisal',   label:'Appraisal Award',   color:'var(--cat-appraisal)' },
+  { id:'carrier',     label:'Carrier Contact',   color:'var(--cat-carrier)' },
+  { id:'other',       label:'Other',             color:'var(--cat-other)' },
+];
+const catMap = Object.fromEntries(CATEGORIES.map(c=>[c.id,c]));
+
+let supabase = null;
+let usingSupabase = false;
+try{
+  if(SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY.length > 10){
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    usingSupabase = true;
+  }
+}catch(e){ console.warn('Supabase init failed', e); }
+
+/* ---------- local fallback storage (used until Supabase is configured) ---------- */
+const LOCAL_KEY = 'claimActivityDocket_entries';
+function loadLocal(){
+  try{ return JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]'); }catch(e){ return []; }
+}
+function saveLocal(entries){
+  try{ localStorage.setItem(LOCAL_KEY, JSON.stringify(entries)); }catch(e){}
+}
+
+let entries = [];
+let currentDate = new Date();
+let currentView = 'day';
+let activeFilter = null;
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function toKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function isSameDay(a,b){ return toKey(a)===toKey(b); }
+
+function fmtDateDisplay(d){
+  const opts = { weekday:'short', month:'short', day:'numeric', year:'numeric' };
+  const str = d.toLocaleDateString('en-US', opts);
+  const todayStr = new Date().toLocaleDateString('en-US', opts);
+  return str + (str===todayStr ? ' <span class="today-pill">TODAY</span>' : '');
+}
+
+async function fetchEntries(){
+  if(usingSupabase){
+    const { data, error } = await supabase
+      .from('activity_entries')
+      .select('*')
+      .order('created_at', { ascending:true });
+    if(error){
+      console.error(error);
+      setSyncStatus(false, 'Connection error — check console');
+      entries = loadLocal();
+      return;
+    }
+    entries = data || [];
+    setSyncStatus(true, 'Synced to Supabase');
+  } else {
+    entries = loadLocal();
+    setSyncStatus(false, 'Local only — add Supabase credentials to sync');
+  }
+}
+
+function setSyncStatus(ok, label){
+  document.getElementById('syncDot').className = 'sync-dot ' + (ok ? 'ok':'off');
+  document.getElementById('syncLabel').textContent = label;
+}
+
+async function addEntry({category, description, count, source}){
+  const now = new Date();
+  const entry = {
+    date: toKey(currentView==='day' ? currentDate : now),
+    category, description, count: count||1, source: source||'manual',
+    created_at: now.toISOString()
+  };
+  if(usingSupabase){
+    const { data, error } = await supabase.from('activity_entries').insert(entry).select();
+    if(error){ console.error(error); alert('Could not save to Supabase — check console.'); return; }
+    entries.push(data[0]);
+  } else {
+    entry.id = 'local-'+Date.now()+Math.random().toString(16).slice(2);
+    entries.push(entry);
+    saveLocal(entries);
+  }
+  render();
+}
+
+async function deleteEntry(id){
+  if(usingSupabase){
+    const { error } = await supabase.from('activity_entries').delete().eq('id', id);
+    if(error){ console.error(error); return; }
+  }
+  entries = entries.filter(e=>e.id!==id);
+  if(!usingSupabase) saveLocal(entries);
+  render();
+}
+window.deleteEntry = deleteEntry;
+
+/* ---------- populate category select ---------- */
+function initCategorySelect(){
+  const sel = document.getElementById('catSelect');
+  sel.innerHTML = CATEGORIES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+}
+
+/* ---------- tally strip ---------- */
+function renderTally(){
+  const dayEntries = entries.filter(e=>e.date===toKey(currentDate));
+  const counts = {};
+  CATEGORIES.forEach(c=>counts[c.id]=0);
+  dayEntries.forEach(e=>{ counts[e.category] = (counts[e.category]||0) + Number(e.count||1); });
+  const strip = document.getElementById('tallyStrip');
+  strip.innerHTML = CATEGORIES.map(c=>`
+    <div class="tally-card ${activeFilter===c.id?'active':''}" style="--cat-color:${c.color}" data-cat="${c.id}">
+      <div class="num">${counts[c.id]}</div>
+      <div class="lbl">${c.label}</div>
+    </div>
+  `).join('');
+  strip.querySelectorAll('.tally-card').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const cat = el.getAttribute('data-cat');
+      activeFilter = activeFilter===cat ? null : cat;
+      render();
+    });
+  });
+  const total = dayEntries.reduce((s,e)=>s+Number(e.count||1),0);
+  document.getElementById('totalToday').textContent = `${total} logged today`;
+}
+
+/* ---------- day view ---------- */
+function renderDayView(){
+  const container = document.createElement('div');
+  container.className = 'docket-panel';
+  let dayEntries = entries.filter(e=>e.date===toKey(currentDate));
+  if(activeFilter) dayEntries = dayEntries.filter(e=>e.category===activeFilter);
+  dayEntries.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+
+  const head = document.createElement('div');
+  head.className = 'panel-head';
+  head.textContent = activeFilter ? `Filtered — ${catMap[activeFilter].label}` : "Today's Docket";
+  container.appendChild(head);
+
+  if(dayEntries.length===0){
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = `<div class="stamp">No entries yet</div>Log your first item above, or ask Claude to "log today" from your Gmail.`;
+    container.appendChild(empty);
+    return container;
+  }
+
+  const ul = document.createElement('ul');
+  ul.className = 'docket-list';
+  dayEntries.forEach((e, i)=>{
+    const cat = catMap[e.category] || catMap.other;
+    const time = new Date(e.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="idx">${String(i+1).padStart(3,'0')}</span>
+      <span class="badge" style="--cat-color:${cat.color}">${cat.label}</span>
+      <span class="desc">${escapeHtml(e.description||'')} <span class="src">${time} · ${e.source==='session'?'auto-logged':'manual'}</span></span>
+      <span class="cnt">×${e.count||1}</span>
+      <button class="del" onclick="deleteEntry('${e.id}')" title="Delete">&times;</button>
+    `;
+    ul.appendChild(li);
+  });
+  container.appendChild(ul);
+  return container;
+}
+
+/* ---------- week view ---------- */
+function renderWeekView(){
+  const container = document.createElement('div');
+  container.className = 'docket-panel';
+  const head = document.createElement('div');
+  head.className = 'panel-head';
+  head.textContent = 'This Week — by day and category';
+  container.appendChild(head);
+
+  const start = new Date(currentDate);
+  const dow = start.getDay();
+  const monday = new Date(start);
+  monday.setDate(start.getDate() - ((dow+6)%7));
+  const days = [...Array(7)].map((_,i)=>{
+    const d = new Date(monday); d.setDate(monday.getDate()+i); return d;
+  });
+
+  const grid = document.createElement('div');
+  grid.className = 'week-grid';
+
+  let weekMax = 1;
+  const dayTotals = days.map(d=>{
+    const key = toKey(d);
+    const dayE = entries.filter(e=>e.date===key);
+    const total = dayE.reduce((s,e)=>s+Number(e.count||1),0);
+    weekMax = Math.max(weekMax, total);
+    return { d, dayE, total };
+  });
+
+  dayTotals.forEach(({d, dayE, total})=>{
+    const label = document.createElement('div');
+    label.className = 'week-row-label';
+    label.textContent = d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
+    grid.appendChild(label);
+
+    const barsWrap = document.createElement('div');
+    barsWrap.style.display='flex'; barsWrap.style.alignItems='center';
+    const bars = document.createElement('div');
+    bars.className = 'week-bars';
+    bars.style.width = '100%';
+    CATEGORIES.forEach(c=>{
+      const catTotal = dayE.filter(e=>e.category===c.id).reduce((s,e)=>s+Number(e.count||1),0);
+      if(catTotal>0){
+        const seg = document.createElement('div');
+        seg.className='seg';
+        seg.style.width = (catTotal/weekMax*100)+'%';
+        seg.style.minWidth = '3px';
+        seg.style.background = c.color.replace('var(','').replace(')','');
+        seg.title = `${c.label}: ${catTotal}`;
+        seg.style.setProperty('background', c.color);
+        bars.appendChild(seg);
+      }
+    });
+    barsWrap.appendChild(bars);
+    const totalLbl = document.createElement('span');
+    totalLbl.className='week-total';
+    totalLbl.textContent = total;
+    barsWrap.appendChild(totalLbl);
+    grid.appendChild(barsWrap);
+  });
+  container.appendChild(grid);
+
+  const legend = document.createElement('div');
+  legend.className = 'week-legend';
+  legend.innerHTML = CATEGORIES.map(c=>`
+    <span class="legend-item"><span class="legend-dot" style="background:${c.color}"></span>${c.label}</span>
+  `).join('');
+  container.appendChild(legend);
+
+  return container;
+}
+
+/* ---------- all log view ---------- */
+function renderAllView(){
+  const container = document.createElement('div');
+  container.className = 'docket-panel';
+  const head = document.createElement('div');
+  head.className = 'panel-head';
+  head.textContent = 'Full Log — most recent first';
+  container.appendChild(head);
+
+  let all = [...entries];
+  if(activeFilter) all = all.filter(e=>e.category===activeFilter);
+  all.sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+
+  if(all.length===0){
+    const empty = document.createElement('div');
+    empty.className='empty-state';
+    empty.innerHTML = `<div class="stamp">Nothing logged yet</div>Entries you add will show up here.`;
+    container.appendChild(empty);
+    return container;
+  }
+
+  const ul = document.createElement('ul');
+  ul.className = 'docket-list';
+  all.slice(0,200).forEach((e,i)=>{
+    const cat = catMap[e.category] || catMap.other;
+    const dateStr = new Date(e.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="idx">${dateStr}</span>
+      <span class="badge" style="--cat-color:${cat.color}">${cat.label}</span>
+      <span class="desc">${escapeHtml(e.description||'')} <span class="src">${e.source==='session'?'auto-logged':'manual'}</span></span>
+      <span class="cnt">×${e.count||1}</span>
+      <button class="del" onclick="deleteEntry('${e.id}')" title="Delete">&times;</button>
+    `;
+    ul.appendChild(li);
+  });
+  container.appendChild(ul);
+  return container;
+}
+
+function escapeHtml(s){
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+/* ---------- render orchestration ---------- */
+function render(){
+  document.getElementById('dateDisplay').innerHTML = fmtDateDisplay(currentDate);
+  renderTally();
+  const area = document.getElementById('viewArea');
+  area.innerHTML = '';
+  if(currentView==='day') area.appendChild(renderDayView());
+  else if(currentView==='week') area.appendChild(renderWeekView());
+  else area.appendChild(renderAllView());
+}
+
+/* ---------- events ---------- */
+document.getElementById('prevDay').addEventListener('click', ()=>{
+  currentDate.setDate(currentDate.getDate()-1); render();
+});
+document.getElementById('nextDay').addEventListener('click', ()=>{
+  currentDate.setDate(currentDate.getDate()+1); render();
+});
+document.getElementById('todayBtn').addEventListener('click', ()=>{
+  currentDate = new Date(); render();
+});
+document.querySelectorAll('.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentView = btn.getAttribute('data-view');
+    activeFilter = null;
+    render();
+  });
+});
+document.getElementById('addBtn').addEventListener('click', async ()=>{
+  const category = document.getElementById('catSelect').value;
+  const description = document.getElementById('descInput').value.trim();
+  const count = parseInt(document.getElementById('countInput').value,10) || 1;
+  if(!description){ document.getElementById('descInput').focus(); return; }
+  await addEntry({category, description, count, source:'manual'});
+  document.getElementById('descInput').value = '';
+  document.getElementById('countInput').value = '1';
+});
+document.getElementById('descInput').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') document.getElementById('addBtn').click();
+});
+
+/* ---------- init ---------- */
+(async function init(){
+  initCategorySelect();
+  await fetchEntries();
+  render();
+})();
+</script>
+</body>
+</html>
