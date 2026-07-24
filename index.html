@@ -239,11 +239,11 @@ const CATEGORIES = [
 ];
 const catMap = Object.fromEntries(CATEGORIES.map(c=>[c.id,c]));
 
-let supabase = null;
+let sbClient = null;
 let usingSupabase = false;
 try{
   if(SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY.length > 10){
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     usingSupabase = true;
   }
 }catch(e){ console.warn('Supabase init failed', e); }
@@ -275,7 +275,7 @@ function fmtDateDisplay(d){
 
 async function fetchEntries(){
   if(usingSupabase){
-    const { data, error } = await supabase
+    const { data, error } = await sbClient
       .from('activity_entries')
       .select('*')
       .order('created_at', { ascending:true });
@@ -306,7 +306,7 @@ async function addEntry({category, description, count, source}){
     created_at: now.toISOString()
   };
   if(usingSupabase){
-    const { data, error } = await supabase.from('activity_entries').insert(entry).select();
+    const { data, error } = await sbClient.from('activity_entries').insert(entry).select();
     if(error){ console.error(error); alert('Could not save to Supabase — check console.'); return; }
     entries.push(data[0]);
   } else {
@@ -319,7 +319,7 @@ async function addEntry({category, description, count, source}){
 
 async function deleteEntry(id){
   if(usingSupabase){
-    const { error } = await supabase.from('activity_entries').delete().eq('id', id);
+    const { error } = await sbClient.from('activity_entries').delete().eq('id', id);
     if(error){ console.error(error); return; }
   }
   entries = entries.filter(e=>e.id!==id);
