@@ -104,7 +104,7 @@
   .add-form{display:flex;flex-wrap:wrap;gap:10px;padding:14px 16px;align-items:flex-end;}
   .field{display:flex;flex-direction:column;gap:4px;}
   .field label{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
-  select, input[type=text], input[type=number]{
+  select, input[type=text], input[type=number], input[type=date]{
     font-family:'Inter',sans-serif;font-size:13px;padding:7px 9px;border:1px solid var(--line);
     border-radius:3px;background:var(--cream);color:var(--ink);
   }
@@ -152,6 +152,18 @@
   .legend-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-soft);}
   .legend-dot{width:9px;height:9px;border-radius:2px;}
 
+  /* By Day table */
+  .byday-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .byday-table th, .byday-table td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;}
+  .byday-table th{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--ink-soft);font-weight:600;position:sticky;top:0;background:var(--cream);
+  }
+  .byday-table td:first-child, .byday-table th:first-child{text-align:left;font-family:'IBM Plex Mono',monospace;color:var(--navy);font-weight:600;}
+  .byday-table tr:hover td{background:var(--parchment);}
+  .byday-table .total-col{font-weight:700;color:var(--navy);border-left:2px solid var(--line);}
+  .byday-scroll{overflow-x:auto;}
+
   /* Sync status */
   .sync-bar{
     display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);
@@ -191,6 +203,7 @@
   <div class="tabs">
     <button class="active" data-view="day">Today's Docket</button>
     <button data-view="week">This Week</button>
+    <button data-view="byday">By Day</button>
     <button data-view="all">Full Log</button>
     <button id="exportBtn" class="btn ghost small" style="margin-left:auto;">Export CSV</button>
   </div>
@@ -200,6 +213,10 @@
   <div class="docket-panel">
     <div class="panel-head">Log an entry</div>
     <div class="add-form">
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="dateInput">
+      </div>
       <div class="field">
         <label>Category</label>
         <select id="catSelect"></select>
@@ -301,10 +318,10 @@ function setSyncStatus(ok, label){
   document.getElementById('syncLabel').textContent = label;
 }
 
-async function addEntry({category, description, count, source}){
+async function addEntry({category, description, count, source, dateStr}){
   const now = new Date();
   const entry = {
-    date: toKey(currentView==='day' ? currentDate : now),
+    date: dateStr || toKey(currentView==='day' ? currentDate : now),
     category, description, count: count||1, source: source||'manual',
     created_at: now.toISOString()
   };
@@ -519,14 +536,75 @@ function escapeHtml(s){
   return div.innerHTML;
 }
 
+/* ---------- by-day table view ---------- */
+function renderByDayView(){
+  const container = document.createElement('div');
+  container.className = 'docket-panel';
+  const head = document.createElement('div');
+  head.className = 'panel-head';
+  head.textContent = 'By Day — count per category, every date logged';
+  container.appendChild(head);
+
+  if(entries.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = `<div class="stamp">No entries yet</div>Log something to see it broken out by day here.`;
+    container.appendChild(empty);
+    return container;
+  }
+
+  // Group by date
+  const byDate = {};
+  entries.forEach(e=>{
+    if(!byDate[e.date]) byDate[e.date] = {};
+    byDate[e.date][e.category] = (byDate[e.date][e.category]||0) + Number(e.count||1);
+  });
+  const dates = Object.keys(byDate).sort((a,b)=> b.localeCompare(a)); // most recent first
+
+  const scrollWrap = document.createElement('div');
+  scrollWrap.className = 'byday-scroll';
+  const table = document.createElement('table');
+  table.className = 'byday-table';
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  headRow.innerHTML = '<th>Date</th>' + CATEGORIES.map(c=>`<th>${c.label}</th>`).join('') + '<th class="total-col">Total</th>';
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  dates.forEach(dateKey=>{
+    const row = document.createElement('tr');
+    const d = new Date(dateKey+'T00:00:00');
+    const dateLabel = d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
+    let rowTotal = 0;
+    const cells = CATEGORIES.map(c=>{
+      const n = byDate[dateKey][c.id] || 0;
+      rowTotal += n;
+      return `<td>${n>0 ? n : '—'}</td>`;
+    }).join('');
+    row.innerHTML = `<td>${dateLabel}</td>${cells}<td class="total-col">${rowTotal}</td>`;
+    tbody.appendChild(row);
+  });
+  table.appendChild(tbody);
+  scrollWrap.appendChild(table);
+  container.appendChild(scrollWrap);
+  return container;
+}
+
 /* ---------- render orchestration ---------- */
 function render(){
   document.getElementById('dateDisplay').innerHTML = fmtDateDisplay(currentDate);
+  const dateInputEl = document.getElementById('dateInput');
+  if(dateInputEl && document.activeElement !== dateInputEl){
+    dateInputEl.value = toKey(currentDate);
+  }
   renderTally();
   const area = document.getElementById('viewArea');
   area.innerHTML = '';
   if(currentView==='day') area.appendChild(renderDayView());
   else if(currentView==='week') area.appendChild(renderWeekView());
+  else if(currentView==='byday') area.appendChild(renderByDayView());
   else area.appendChild(renderAllView());
 }
 
@@ -580,6 +658,33 @@ function downloadCSV(filename, rows){
 }
 
 document.getElementById('exportBtn').addEventListener('click', ()=>{
+  if(currentView === 'byday'){
+    const byDate = {};
+    entries.forEach(e=>{
+      if(!byDate[e.date]) byDate[e.date] = {};
+      byDate[e.date][e.category] = (byDate[e.date][e.category]||0) + Number(e.count||1);
+    });
+    const dates = Object.keys(byDate).sort();
+    const header = ['Date', ...CATEGORIES.map(c=>c.label), 'Total'];
+    const lines = [header.map(csvEscape).join(',')];
+    dates.forEach(dateKey=>{
+      let total = 0;
+      const cells = CATEGORIES.map(c=>{
+        const n = byDate[dateKey][c.id] || 0;
+        total += n;
+        return n;
+      });
+      lines.push([dateKey, ...cells, total].map(csvEscape).join(','));
+    });
+    const csv = lines.join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'claim-activity_by-day.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return;
+  }
   let rows, label;
   if(currentView === 'day'){
     rows = entries.filter(e=>e.date===toKey(currentDate));
@@ -603,8 +708,9 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   const category = document.getElementById('catSelect').value;
   const description = document.getElementById('descInput').value.trim();
   const count = parseInt(document.getElementById('countInput').value,10) || 1;
+  const dateStr = document.getElementById('dateInput').value || toKey(currentDate);
   if(!description){ document.getElementById('descInput').focus(); return; }
-  await addEntry({category, description, count, source:'manual'});
+  await addEntry({category, description, count, source:'manual', dateStr});
   document.getElementById('descInput').value = '';
   document.getElementById('countInput').value = '1';
 });
