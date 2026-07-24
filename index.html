@@ -24,6 +24,7 @@
     --green: #4B6E4E;
 
     --cat-email: #3E6B8A;
+    --cat-received: #5C8A8A;
     --cat-demand: #A8452F;
     --cat-spol: #7A5C9E;
     --cat-litigation: #B8863C;
@@ -73,7 +74,7 @@
   }
 
   /* View tabs */
-  .tabs{display:flex;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--line);}
+  .tabs{display:flex;align-items:center;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--line);}
   .tabs button{
     font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.05em;
     text-transform:uppercase;background:none;border:none;padding:9px 4px;
@@ -191,6 +192,7 @@
     <button class="active" data-view="day">Today's Docket</button>
     <button data-view="week">This Week</button>
     <button data-view="all">Full Log</button>
+    <button id="exportBtn" class="btn ghost small" style="margin-left:auto;">Export CSV</button>
   </div>
 
   <div class="tally" id="tallyStrip"></div>
@@ -228,7 +230,8 @@ const SUPABASE_URL = 'https://larnctjihbiirijrfikf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxhcm5jdGppaGJpaXJpanJmaWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4OTQ2MjQsImV4cCI6MjEwMDQ3MDYyNH0.aYEFKmRberxAMFD69qnu3GiBxtBm9ZQQQenjnY6Znf4';
 
 const CATEGORIES = [
-  { id:'email',       label:'Emails',            color:'var(--cat-email)' },
+  { id:'email',       label:'Emails Sent',       color:'var(--cat-email)' },
+  { id:'received',    label:'Emails Received/Triaged', color:'var(--cat-received)' },
   { id:'demand',      label:'Demand Letters',    color:'var(--cat-demand)' },
   { id:'spol',        label:'SPOL / Proof of Loss', color:'var(--cat-spol)' },
   { id:'litigation',  label:'Litigation Handoff',color:'var(--cat-litigation)' },
@@ -537,14 +540,64 @@ document.getElementById('nextDay').addEventListener('click', ()=>{
 document.getElementById('todayBtn').addEventListener('click', ()=>{
   currentDate = new Date(); render();
 });
-document.querySelectorAll('.tabs button').forEach(btn=>{
+document.querySelectorAll('.tabs button[data-view]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tabs button[data-view]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     currentView = btn.getAttribute('data-view');
     activeFilter = null;
     render();
   });
+});
+
+function csvEscape(val){
+  const s = String(val ?? '');
+  if(/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+  return s;
+}
+
+function toCSV(rows){
+  const header = ['Date','Category','Description','Count','Source'];
+  const lines = [header.join(',')];
+  rows.forEach(e=>{
+    const cat = (catMap[e.category] || catMap.other).label;
+    lines.push([e.date, cat, e.description||'', e.count||1, e.source||'manual'].map(csvEscape).join(','));
+  });
+  return lines.join('\n');
+}
+
+function downloadCSV(filename, rows){
+  const csv = toCSV(rows);
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  let rows, label;
+  if(currentView === 'day'){
+    rows = entries.filter(e=>e.date===toKey(currentDate));
+    label = toKey(currentDate);
+  } else if(currentView === 'week'){
+    const start = new Date(currentDate);
+    const dow = start.getDay();
+    const monday = new Date(start); monday.setDate(start.getDate() - ((dow+6)%7));
+    const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+    const mondayKey = toKey(monday), sundayKey = toKey(sunday);
+    rows = entries.filter(e=> e.date >= mondayKey && e.date <= sundayKey);
+    label = `week_${mondayKey}_to_${sundayKey}`;
+  } else {
+    rows = entries.slice();
+    label = 'full-log';
+  }
+  rows.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+  downloadCSV(`claim-activity_${label}.csv`, rows);
 });
 document.getElementById('addBtn').addEventListener('click', async ()=>{
   const category = document.getElementById('catSelect').value;
