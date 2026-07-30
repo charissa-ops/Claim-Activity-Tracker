@@ -201,6 +201,17 @@
   .cat-add-row{display:flex;gap:6px;margin-top:4px;}
   .cat-add-row input{flex:1;}
   .cat-add-row.hidden{display:none;}
+  /* Report panel */
+  .report-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:14px 16px;}
+  .report-output{
+    box-sizing:border-box;margin:0 16px 16px;width:calc(100% - 32px);
+    min-height:220px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:1.5;
+    padding:12px;border:1px solid var(--line);border-radius:4px;background:var(--cream);color:var(--ink);
+    resize:vertical;
+  }
+  .copy-confirm{font-size:11.5px;color:var(--green);font-family:'IBM Plex Mono',monospace;}
+  .hidden{display:none !important;}
+
   .sync-bar{
     display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);
     margin-bottom:14px;font-family:'IBM Plex Mono',monospace;
@@ -265,6 +276,28 @@
     <button data-view="byday">By Day</button>
     <button data-view="all">Full Log</button>
     <button id="exportBtn" class="btn ghost small" style="margin-left:auto;">Export CSV</button>
+  </div>
+
+  <div class="docket-panel" id="reportPanel">
+    <div class="panel-head">Generate Report</div>
+    <div class="report-controls">
+      <div class="field">
+        <label>Period</label>
+        <select id="reportPeriod">
+          <option value="week">Weekly</option>
+          <option value="biweek">Bi-Weekly</option>
+          <option value="month">Monthly</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Anchor date</label>
+        <input type="date" id="reportDate">
+      </div>
+      <button class="btn" id="generateReportBtn">Generate</button>
+      <button class="btn ghost small hidden" id="copyReportBtn">Copy to Clipboard</button>
+      <span class="copy-confirm" id="copyConfirm"></span>
+    </div>
+    <textarea id="reportOutput" class="report-output hidden" readonly></textarea>
   </div>
 
   <div class="tally" id="tallyStrip"></div>
@@ -332,8 +365,10 @@ let customCategories = [];
 let ALL_CATEGORIES = CATEGORIES.slice();
 let catMap = Object.fromEntries(ALL_CATEGORIES.map(c=>[c.id,c]));
 function rebuildCategoryState(){
-  ALL_CATEGORIES = [...CATEGORIES, ...customCategories];
-  catMap = Object.fromEntries(ALL_CATEGORIES.map(c=>[c.id,c]));
+  // Admin (Charissa) keeps the built-in claims categories as defaults, plus any custom ones.
+  // Non-admin staff start with a blank slate — only categories they've added themselves.
+  ALL_CATEGORIES = isAdmin ? [...CATEGORIES, ...customCategories] : [...customCategories];
+  catMap = Object.fromEntries([...CATEGORIES, ...customCategories].map(c=>[c.id,c])); // keep full map for label lookups regardless
 }
 
 // Add or remove names here as your team changes. Must match the staff_id values
@@ -746,12 +781,112 @@ function renderByDayView(){
   return container;
 }
 
+/* ---------- report generation ---------- */
+function computePeriodRange(type, refDateStr){
+  const ref = new Date(refDateStr + 'T00:00:00');
+  let start, end, label;
+  if(type === 'month'){
+    start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    end = new Date(ref.getFullYear(), ref.getMonth()+1, 0);
+    label = start.toLocaleDateString('en-US',{month:'long', year:'numeric'});
+  } else {
+    const dow = ref.getDay();
+    const monday = new Date(ref); monday.setDate(ref.getDate() - ((dow+6)%7));
+    if(type === 'biweek'){
+      start = new Date(monday); start.setDate(monday.getDate()-7);
+      end = new Date(monday); end.setDate(monday.getDate()+6);
+    } else { // week
+      start = monday;
+      end = new Date(monday); end.setDate(monday.getDate()+6);
+    }
+    label = `${toKey(start)} to ${toKey(end)}`;
+  }
+  return { start, end, label };
+}
+
+function generateReportText(){
+  const type = document.getElementById('reportPeriod').value;
+  const refDateStr = document.getElementById('reportDate').value || toKey(currentDate);
+  const { start, end, label } = computePeriodRange(type, refDateStr);
+  const startKey = toKey(start), endKey = toKey(end);
+
+  const staffLabel = (STAFF.find(s=>s.id===currentStaff)||STAFF[0]).label;
+  const periodTypeLabel = type === 'week' ? 'Weekly' : type === 'biweek' ? 'Bi-Weekly' : 'Monthly';
+
+  const inRange = staffEntries().filter(e => e.date >= startKey && e.date <= endKey);
+
+  // Category totals
+  const totals = {};
+  ALL_CATEGORIES.forEach(c => totals[c.id] = 0);
+  inRange.forEach(e => { totals[e.category] = (totals[e.category]||0) + Number(e.count||1); });
+
+  let out = `Claim Activity Report — ${staffLabel}\n`;
+  out += `Period: ${periodTypeLabel} (${label})\n`;
+  out += `\nCATEGORY TOTALS\n`;
+  ALL_CATEGORIES.forEach(c=>{
+    out += `${c.label}: ${totals[c.id]}\n`;
+  });
+  const grandTotal = Object.values(totals).reduce((a,b)=>a+b,0);
+  out += `Total: ${grandTotal}\n`;
+
+  out += `\nDAY-BY-DAY BREAKDOWN\n`;
+  const header = ['Date', ...ALL_CATEGORIES.map(c=>c.label), 'Total'];
+  out += header.join(' | ') + '\n';
+
+  const days = [];
+  const cursor = new Date(start);
+  while(cursor <= end){
+    days.push(toKey(cursor));
+    cursor.setDate(cursor.getDate()+1);
+  }
+  days.forEach(dateKey=>{
+    const dayEntries = inRange.filter(e=>e.date===dateKey);
+    const dayCounts = {};
+    ALL_CATEGORIES.forEach(c=>dayCounts[c.id]=0);
+    dayEntries.forEach(e=>{ dayCounts[e.category] = (dayCounts[e.category]||0) + Number(e.count||1); });
+    const dayTotal = Object.values(dayCounts).reduce((a,b)=>a+b,0);
+    const row = [dateKey, ...ALL_CATEGORIES.map(c=>dayCounts[c.id]), dayTotal];
+    out += row.join(' | ') + '\n';
+  });
+
+  return out;
+}
+
+document.getElementById('generateReportBtn').addEventListener('click', ()=>{
+  const text = generateReportText();
+  const outputEl = document.getElementById('reportOutput');
+  outputEl.value = text;
+  outputEl.classList.remove('hidden');
+  document.getElementById('copyReportBtn').classList.remove('hidden');
+  document.getElementById('copyConfirm').textContent = '';
+});
+
+document.getElementById('copyReportBtn').addEventListener('click', async ()=>{
+  const text = document.getElementById('reportOutput').value;
+  const confirmEl = document.getElementById('copyConfirm');
+  try{
+    await navigator.clipboard.writeText(text);
+    confirmEl.textContent = 'Copied! Paste it in your Claude chat.';
+  }catch(e){
+    // Fallback for browsers/contexts that block the Clipboard API
+    const outputEl = document.getElementById('reportOutput');
+    outputEl.select();
+    document.execCommand('copy');
+    confirmEl.textContent = 'Copied (fallback) — paste it in your Claude chat.';
+  }
+  setTimeout(()=>{ confirmEl.textContent=''; }, 4000);
+});
+
 /* ---------- render orchestration ---------- */
 function render(){
   document.getElementById('dateDisplay').innerHTML = fmtDateDisplay(currentDate);
   const dateInputEl = document.getElementById('dateInput');
   if(dateInputEl && document.activeElement !== dateInputEl){
     dateInputEl.value = toKey(currentDate);
+  }
+  const reportDateEl = document.getElementById('reportDate');
+  if(reportDateEl && !reportDateEl.value){
+    reportDateEl.value = toKey(new Date());
   }
   renderTally();
   const area = document.getElementById('viewArea');
