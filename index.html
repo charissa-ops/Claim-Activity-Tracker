@@ -73,6 +73,16 @@
     color:#fff;padding:1px 6px;border-radius:10px;letter-spacing:.05em;
   }
 
+  /* Staff tabs */
+  .staff-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .staff-tab{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.03em;
+    background:#fff;border:1px solid var(--line);color:var(--ink-soft);
+    padding:7px 16px;border-radius:20px;cursor:pointer;transition:all .12s;
+  }
+  .staff-tab:hover{border-color:var(--amber-light);}
+  .staff-tab.active{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:600;}
+
   /* View tabs */
   .tabs{display:flex;align-items:center;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--line);}
   .tabs button{
@@ -164,7 +174,33 @@
   .byday-table .total-col{font-weight:700;color:var(--navy);border-left:2px solid var(--line);}
   .byday-scroll{overflow-x:auto;}
 
-  /* Sync status */
+  /* Login screen */
+  .login-screen{
+    min-height:70vh;display:flex;align-items:center;justify-content:center;
+  }
+  .login-box{
+    background:#fff;border:1px solid var(--line);border-radius:6px;padding:32px 36px;
+    width:100%;max-width:340px;box-shadow:0 4px 16px rgba(27,42,74,.06);
+  }
+  .login-box h1{font-family:'Source Serif 4',serif;font-size:22px;color:var(--navy);margin:0 0 4px;}
+  .login-box .sub{font-size:12.5px;color:var(--ink-soft);margin-bottom:20px;}
+  .login-box .field{margin-bottom:12px;}
+  .login-box input{width:100%;}
+  .login-box .btn{width:100%;margin-top:6px;}
+  .login-error{color:var(--red);font-size:12px;margin-top:10px;min-height:14px;}
+  .staff-label-chip{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--navy);color:#fff;
+    padding:6px 16px;border-radius:20px;display:inline-block;margin-bottom:16px;
+  }
+  .logout-link{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);
+    background:none;border:none;cursor:pointer;text-decoration:underline;padding:0;
+  }
+
+  /* Category add row */
+  .cat-add-row{display:flex;gap:6px;margin-top:4px;}
+  .cat-add-row input{flex:1;}
+  .cat-add-row.hidden{display:none;}
   .sync-bar{
     display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);
     margin-bottom:14px;font-family:'IBM Plex Mono',monospace;
@@ -182,6 +218,25 @@
 <body>
 <div class="wrap">
 
+  <div class="login-screen" id="loginScreen">
+    <div class="login-box">
+      <h1>Claim Activity Docket</h1>
+      <div class="sub">Sign in to continue</div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" autocomplete="current-password">
+      </div>
+      <button class="btn" id="loginBtn">Sign In</button>
+      <div class="login-error" id="loginError"></div>
+    </div>
+  </div>
+
+  <div id="appRoot" style="display:none;">
+
   <header class="top">
     <div class="brand">
       <span class="eyebrow">Palm Partners &middot; Back Office Ops</span>
@@ -195,9 +250,13 @@
     </div>
   </header>
 
+  <div id="staffArea">
+    <div class="staff-tabs" id="staffTabs"></div>
+  </div>
+
   <div class="sync-bar">
     <span><span class="sync-dot off" id="syncDot"></span><span id="syncLabel">Checking connection…</span></span>
-    <span id="totalToday"></span>
+    <span><span id="totalToday"></span> &nbsp; <button class="logout-link" id="logoutBtn">Log out</button></span>
   </div>
 
   <div class="tabs">
@@ -214,12 +273,20 @@
     <div class="panel-head">Log an entry</div>
     <div class="add-form">
       <div class="field">
+        <label>Staff</label>
+        <select id="staffSelect"></select>
+      </div>
+      <div class="field">
         <label>Date</label>
         <input type="date" id="dateInput">
       </div>
       <div class="field">
         <label>Category</label>
         <select id="catSelect"></select>
+        <div class="cat-add-row hidden" id="catAddRow">
+          <input type="text" id="newCatName" placeholder="New category name">
+          <button class="btn ghost small" id="newCatSave">Save</button>
+        </div>
       </div>
       <div class="field grow">
         <label>Description</label>
@@ -234,6 +301,8 @@
   </div>
 
   <div id="viewArea"></div>
+
+  </div>
 
 </div>
 
@@ -257,7 +326,31 @@ const CATEGORIES = [
   { id:'sfupload',    label:'SF Upload / Doc Processing', color:'var(--cat-sfupload)' },
   { id:'other',       label:'Other',             color:'var(--cat-other)' },
 ];
-const catMap = Object.fromEntries(CATEGORIES.map(c=>[c.id,c]));
+
+// Custom categories staff add themselves get appended here at runtime (private to whoever added them).
+let customCategories = [];
+let ALL_CATEGORIES = CATEGORIES.slice();
+let catMap = Object.fromEntries(ALL_CATEGORIES.map(c=>[c.id,c]));
+function rebuildCategoryState(){
+  ALL_CATEGORIES = [...CATEGORIES, ...customCategories];
+  catMap = Object.fromEntries(ALL_CATEGORIES.map(c=>[c.id,c]));
+}
+
+// Add or remove names here as your team changes. Must match the staff_id values
+// you set up in the staff_profiles table.
+const STAFF = [
+  { id:'charissa', label:'Charissa' },
+  { id:'camille',  label:'Camille' },
+  { id:'jean',     label:'Jean' },
+];
+let currentStaff = STAFF[0].id;
+
+// Auth state — populated after sign-in
+let session = null;
+let myProfile = null;      // { user_id, staff_id, display_name, is_admin }
+let isAdmin = false;
+
+const CUSTOM_CAT_PALETTE = ['#8A5C4E','#3E6B5C','#5C6B8A','#8A7A3E','#6E4E7A','#4E6E7A'];
 
 let sbClient = null;
 let usingSupabase = false;
@@ -282,6 +375,12 @@ let currentDate = new Date();
 let currentView = 'day';
 let activeFilter = null;
 
+// Entries logged before the staff feature existed have no `staff` field —
+// treat those as belonging to the first staff member (Charissa) so nothing is lost.
+function staffEntries(){
+  return entries.filter(e => (e.staff || STAFF[0].id) === currentStaff);
+}
+
 function pad(n){ return String(n).padStart(2,'0'); }
 function toKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function isSameDay(a,b){ return toKey(a)===toKey(b); }
@@ -302,14 +401,14 @@ async function fetchEntries(){
     if(error){
       console.error(error);
       setSyncStatus(false, 'Connection error — check console');
-      entries = loadLocal();
+      entries = [];
       return;
     }
     entries = data || [];
     setSyncStatus(true, 'Synced to Supabase');
   } else {
-    entries = loadLocal();
-    setSyncStatus(false, 'Local only — add Supabase credentials to sync');
+    entries = [];
+    setSyncStatus(false, 'Supabase not configured');
   }
 }
 
@@ -318,22 +417,18 @@ function setSyncStatus(ok, label){
   document.getElementById('syncLabel').textContent = label;
 }
 
-async function addEntry({category, description, count, source, dateStr}){
+async function addEntry({category, description, count, source, dateStr, staff}){
   const now = new Date();
   const entry = {
     date: dateStr || toKey(currentView==='day' ? currentDate : now),
     category, description, count: count||1, source: source||'manual',
+    staff: staff || currentStaff,
     created_at: now.toISOString()
   };
-  if(usingSupabase){
-    const { data, error } = await sbClient.from('activity_entries').insert(entry).select();
-    if(error){ console.error(error); alert('Could not save to Supabase — check console.'); return; }
-    entries.push(data[0]);
-  } else {
-    entry.id = 'local-'+Date.now()+Math.random().toString(16).slice(2);
-    entries.push(entry);
-    saveLocal(entries);
-  }
+  if(!usingSupabase){ alert('Supabase is not configured in this file.'); return; }
+  const { data, error } = await sbClient.from('activity_entries').insert(entry).select();
+  if(error){ console.error(error); alert('Could not save — check console (you may not have permission to log for this staff member).'); return; }
+  entries.push(data[0]);
   render();
 }
 
@@ -343,7 +438,6 @@ async function deleteEntry(id){
     if(error){ console.error(error); return; }
   }
   entries = entries.filter(e=>e.id!==id);
-  if(!usingSupabase) saveLocal(entries);
   render();
 }
 window.deleteEntry = deleteEntry;
@@ -351,17 +445,75 @@ window.deleteEntry = deleteEntry;
 /* ---------- populate category select ---------- */
 function initCategorySelect(){
   const sel = document.getElementById('catSelect');
-  sel.innerHTML = CATEGORIES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+  sel.innerHTML = ALL_CATEGORIES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')
+    + `<option value="__add_new__">+ Add new category…</option>`;
+}
+
+async function fetchCustomCategories(){
+  if(!usingSupabase || !session) { customCategories = []; rebuildCategoryState(); return; }
+  const { data, error } = await sbClient.from('custom_categories').select('*');
+  if(error){ console.error(error); customCategories = []; }
+  else {
+    customCategories = (data||[]).map(row => ({ id: row.cat_id, label: row.label, color: row.color }));
+  }
+  rebuildCategoryState();
+}
+
+async function addCustomCategory(label){
+  const catId = 'custom_' + label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40) || ('custom_'+Date.now());
+  const color = CUSTOM_CAT_PALETTE[customCategories.length % CUSTOM_CAT_PALETTE.length];
+  if(!usingSupabase || !session){ alert('Sign in first to add a category.'); return null; }
+  const { data, error } = await sbClient.from('custom_categories')
+    .insert({ user_id: session.user.id, cat_id: catId, label, color })
+    .select();
+  if(error){
+    if(error.code === '23505'){ alert('You already have a category by that name.'); }
+    else { console.error(error); alert('Could not save the new category — check console.'); }
+    return null;
+  }
+  await fetchCustomCategories();
+  initCategorySelect();
+  return catId;
+}
+
+/* ---------- staff tabs + staff select ---------- */
+function initStaffSelect(){
+  const sel = document.getElementById('staffSelect');
+  const options = isAdmin ? STAFF : STAFF.filter(s=>s.id===currentStaff);
+  sel.innerHTML = options.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+  sel.value = currentStaff;
+  sel.disabled = !isAdmin;
+}
+
+function renderStaffTabs(){
+  const wrap = document.getElementById('staffTabs');
+  if(!isAdmin){
+    const me = STAFF.find(s=>s.id===currentStaff);
+    wrap.innerHTML = `<span class="staff-label-chip">Logged in as ${me ? me.label : currentStaff}</span>`;
+    return;
+  }
+  wrap.innerHTML = STAFF.map(s=>`
+    <button class="staff-tab ${s.id===currentStaff?'active':''}" data-staff="${s.id}">${s.label}</button>
+  `).join('');
+  wrap.querySelectorAll('.staff-tab').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      currentStaff = btn.getAttribute('data-staff');
+      activeFilter = null;
+      document.getElementById('staffSelect').value = currentStaff;
+      renderStaffTabs();
+      render();
+    });
+  });
 }
 
 /* ---------- tally strip ---------- */
 function renderTally(){
-  const dayEntries = entries.filter(e=>e.date===toKey(currentDate));
+  const dayEntries = staffEntries().filter(e=>e.date===toKey(currentDate));
   const counts = {};
-  CATEGORIES.forEach(c=>counts[c.id]=0);
+  ALL_CATEGORIES.forEach(c=>counts[c.id]=0);
   dayEntries.forEach(e=>{ counts[e.category] = (counts[e.category]||0) + Number(e.count||1); });
   const strip = document.getElementById('tallyStrip');
-  strip.innerHTML = CATEGORIES.map(c=>`
+  strip.innerHTML = ALL_CATEGORIES.map(c=>`
     <div class="tally-card ${activeFilter===c.id?'active':''}" style="--cat-color:${c.color}" data-cat="${c.id}">
       <div class="num">${counts[c.id]}</div>
       <div class="lbl">${c.label}</div>
@@ -375,14 +527,15 @@ function renderTally(){
     });
   });
   const total = dayEntries.reduce((s,e)=>s+Number(e.count||1),0);
-  document.getElementById('totalToday').textContent = `${total} logged today`;
+  const staffLabel = (STAFF.find(s=>s.id===currentStaff)||STAFF[0]).label;
+  document.getElementById('totalToday').textContent = `${total} logged today · ${staffLabel}`;
 }
 
 /* ---------- day view ---------- */
 function renderDayView(){
   const container = document.createElement('div');
   container.className = 'docket-panel';
-  let dayEntries = entries.filter(e=>e.date===toKey(currentDate));
+  let dayEntries = staffEntries().filter(e=>e.date===toKey(currentDate));
   if(activeFilter) dayEntries = dayEntries.filter(e=>e.category===activeFilter);
   dayEntries.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
 
@@ -441,7 +594,7 @@ function renderWeekView(){
   let weekMax = 1;
   const dayTotals = days.map(d=>{
     const key = toKey(d);
-    const dayE = entries.filter(e=>e.date===key);
+    const dayE = staffEntries().filter(e=>e.date===key);
     const total = dayE.reduce((s,e)=>s+Number(e.count||1),0);
     weekMax = Math.max(weekMax, total);
     return { d, dayE, total };
@@ -458,7 +611,7 @@ function renderWeekView(){
     const bars = document.createElement('div');
     bars.className = 'week-bars';
     bars.style.width = '100%';
-    CATEGORIES.forEach(c=>{
+    ALL_CATEGORIES.forEach(c=>{
       const catTotal = dayE.filter(e=>e.category===c.id).reduce((s,e)=>s+Number(e.count||1),0);
       if(catTotal>0){
         const seg = document.createElement('div');
@@ -482,7 +635,7 @@ function renderWeekView(){
 
   const legend = document.createElement('div');
   legend.className = 'week-legend';
-  legend.innerHTML = CATEGORIES.map(c=>`
+  legend.innerHTML = ALL_CATEGORIES.map(c=>`
     <span class="legend-item"><span class="legend-dot" style="background:${c.color}"></span>${c.label}</span>
   `).join('');
   container.appendChild(legend);
@@ -499,7 +652,7 @@ function renderAllView(){
   head.textContent = 'Full Log — most recent first';
   container.appendChild(head);
 
-  let all = [...entries];
+  let all = staffEntries();
   if(activeFilter) all = all.filter(e=>e.category===activeFilter);
   all.sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
 
@@ -542,10 +695,11 @@ function renderByDayView(){
   container.className = 'docket-panel';
   const head = document.createElement('div');
   head.className = 'panel-head';
-  head.textContent = 'By Day — count per category, every date logged';
+  head.textContent = `By Day — ${(STAFF.find(s=>s.id===currentStaff)||STAFF[0]).label}, count per category, every date logged`;
   container.appendChild(head);
 
-  if(entries.length === 0){
+  const myEntries = staffEntries();
+  if(myEntries.length === 0){
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.innerHTML = `<div class="stamp">No entries yet</div>Log something to see it broken out by day here.`;
@@ -555,7 +709,7 @@ function renderByDayView(){
 
   // Group by date
   const byDate = {};
-  entries.forEach(e=>{
+  myEntries.forEach(e=>{
     if(!byDate[e.date]) byDate[e.date] = {};
     byDate[e.date][e.category] = (byDate[e.date][e.category]||0) + Number(e.count||1);
   });
@@ -568,7 +722,7 @@ function renderByDayView(){
 
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
-  headRow.innerHTML = '<th>Date</th>' + CATEGORIES.map(c=>`<th>${c.label}</th>`).join('') + '<th class="total-col">Total</th>';
+  headRow.innerHTML = '<th>Date</th>' + ALL_CATEGORIES.map(c=>`<th>${c.label}</th>`).join('') + '<th class="total-col">Total</th>';
   thead.appendChild(headRow);
   table.appendChild(thead);
 
@@ -578,7 +732,7 @@ function renderByDayView(){
     const d = new Date(dateKey+'T00:00:00');
     const dateLabel = d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
     let rowTotal = 0;
-    const cells = CATEGORIES.map(c=>{
+    const cells = ALL_CATEGORIES.map(c=>{
       const n = byDate[dateKey][c.id] || 0;
       rowTotal += n;
       return `<td>${n>0 ? n : '—'}</td>`;
@@ -635,11 +789,12 @@ function csvEscape(val){
 }
 
 function toCSV(rows){
-  const header = ['Date','Category','Description','Count','Source'];
+  const header = ['Date','Staff','Category','Description','Count','Source'];
   const lines = [header.join(',')];
   rows.forEach(e=>{
     const cat = (catMap[e.category] || catMap.other).label;
-    lines.push([e.date, cat, e.description||'', e.count||1, e.source||'manual'].map(csvEscape).join(','));
+    const staffLabel = (STAFF.find(s=>s.id===(e.staff||STAFF[0].id))||STAFF[0]).label;
+    lines.push([e.date, staffLabel, cat, e.description||'', e.count||1, e.source||'manual'].map(csvEscape).join(','));
   });
   return lines.join('\n');
 }
@@ -658,18 +813,19 @@ function downloadCSV(filename, rows){
 }
 
 document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const staffLabel = (STAFF.find(s=>s.id===currentStaff)||STAFF[0]).label.toLowerCase();
   if(currentView === 'byday'){
     const byDate = {};
-    entries.forEach(e=>{
+    staffEntries().forEach(e=>{
       if(!byDate[e.date]) byDate[e.date] = {};
       byDate[e.date][e.category] = (byDate[e.date][e.category]||0) + Number(e.count||1);
     });
     const dates = Object.keys(byDate).sort();
-    const header = ['Date', ...CATEGORIES.map(c=>c.label), 'Total'];
+    const header = ['Date', ...ALL_CATEGORIES.map(c=>c.label), 'Total'];
     const lines = [header.map(csvEscape).join(',')];
     dates.forEach(dateKey=>{
       let total = 0;
-      const cells = CATEGORIES.map(c=>{
+      const cells = ALL_CATEGORIES.map(c=>{
         const n = byDate[dateKey][c.id] || 0;
         total += n;
         return n;
@@ -680,14 +836,15 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
     const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'claim-activity_by-day.csv';
+    a.href = url; a.download = `claim-activity_${staffLabel}_by-day.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     return;
   }
   let rows, label;
+  const mine = staffEntries();
   if(currentView === 'day'){
-    rows = entries.filter(e=>e.date===toKey(currentDate));
+    rows = mine.filter(e=>e.date===toKey(currentDate));
     label = toKey(currentDate);
   } else if(currentView === 'week'){
     const start = new Date(currentDate);
@@ -695,22 +852,23 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
     const monday = new Date(start); monday.setDate(start.getDate() - ((dow+6)%7));
     const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
     const mondayKey = toKey(monday), sundayKey = toKey(sunday);
-    rows = entries.filter(e=> e.date >= mondayKey && e.date <= sundayKey);
+    rows = mine.filter(e=> e.date >= mondayKey && e.date <= sundayKey);
     label = `week_${mondayKey}_to_${sundayKey}`;
   } else {
-    rows = entries.slice();
+    rows = mine.slice();
     label = 'full-log';
   }
   rows.sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
-  downloadCSV(`claim-activity_${label}.csv`, rows);
+  downloadCSV(`claim-activity_${staffLabel}_${label}.csv`, rows);
 });
 document.getElementById('addBtn').addEventListener('click', async ()=>{
   const category = document.getElementById('catSelect').value;
   const description = document.getElementById('descInput').value.trim();
   const count = parseInt(document.getElementById('countInput').value,10) || 1;
   const dateStr = document.getElementById('dateInput').value || toKey(currentDate);
+  const staff = document.getElementById('staffSelect').value || currentStaff;
   if(!description){ document.getElementById('descInput').focus(); return; }
-  await addEntry({category, description, count, source:'manual', dateStr});
+  await addEntry({category, description, count, source:'manual', dateStr, staff});
   document.getElementById('descInput').value = '';
   document.getElementById('countInput').value = '1';
 });
@@ -718,7 +876,33 @@ document.getElementById('descInput').addEventListener('keydown', (e)=>{
   if(e.key==='Enter') document.getElementById('addBtn').click();
 });
 
-/* ---------- init ---------- */
+document.getElementById('catSelect').addEventListener('change', (e)=>{
+  const addRow = document.getElementById('catAddRow');
+  if(e.target.value === '__add_new__'){
+    addRow.classList.remove('hidden');
+    document.getElementById('newCatName').focus();
+  } else {
+    addRow.classList.add('hidden');
+  }
+});
+
+document.getElementById('newCatSave').addEventListener('click', async ()=>{
+  const nameInput = document.getElementById('newCatName');
+  const name = nameInput.value.trim();
+  if(!name) return;
+  const catId = await addCustomCategory(name);
+  if(catId){
+    document.getElementById('catSelect').value = catId;
+    document.getElementById('catAddRow').classList.add('hidden');
+    nameInput.value = '';
+    render();
+  }
+});
+document.getElementById('newCatName').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') document.getElementById('newCatSave').click();
+});
+
+/* ---------- init / auth ---------- */
 function withTimeout(promise, ms){
   return Promise.race([
     promise,
@@ -726,20 +910,70 @@ function withTimeout(promise, ms){
   ]);
 }
 
-(async function init(){
+async function afterLogin(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = '';
+
+  const { data: profileData, error } = await sbClient
+    .from('staff_profiles').select('*').eq('user_id', session.user.id).single();
+
+  if(error || !profileData){
+    alert('Your account is signed in but has no staff profile yet. Ask Charissa to add you in staff_profiles.');
+    await sbClient.auth.signOut();
+    session = null;
+    location.reload();
+    return;
+  }
+
+  myProfile = profileData;
+  isAdmin = !!profileData.is_admin;
+  currentStaff = profileData.staff_id;
+
+  initStaffSelect();
+  renderStaffTabs();
+
+  await fetchCustomCategories();
   initCategorySelect();
-  // Render immediately with whatever's in local storage so the UI never sits blank.
-  entries = loadLocal();
   render();
 
   try{
     await withTimeout(fetchEntries(), 8000);
   }catch(e){
-    console.warn('Could not reach Supabase in time — staying on local data.', e);
-    setSyncStatus(false, 'Could not reach Supabase — using local data');
-    entries = loadLocal();
+    console.warn('Could not reach Supabase in time.', e);
+    setSyncStatus(false, 'Could not reach Supabase — try refreshing');
   }
   render();
+}
+
+document.getElementById('loginBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if(!usingSupabase){ errEl.textContent = 'Supabase is not configured in this file.'; return; }
+  const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+  if(error){ errEl.textContent = error.message; return; }
+  session = data.session;
+  await afterLogin();
+});
+document.getElementById('loginPassword').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter') document.getElementById('loginBtn').click();
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  if(usingSupabase) await sbClient.auth.signOut();
+  location.reload();
+});
+
+(async function init(){
+  if(usingSupabase){
+    const { data } = await sbClient.auth.getSession();
+    session = data.session;
+  }
+  if(session){
+    await afterLogin();
+  }
+  // otherwise: stay on the login screen until the user signs in
 })();
 </script>
 </body>
