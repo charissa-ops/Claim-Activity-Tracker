@@ -146,6 +146,10 @@
   }
   .desc{color:var(--ink);}
   .desc .src{color:var(--ink-soft);font-size:11px;margin-left:6px;font-style:italic;}
+  .state-tag{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:var(--navy);
+    background:var(--parchment);border:1px solid var(--line);padding:1px 6px;border-radius:3px;margin-left:4px;
+  }
   .cnt{font-family:'IBM Plex Mono',monospace;color:var(--navy);font-weight:600;font-size:13px;}
   .del{background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:15px;padding:2px 6px;}
   .del:hover{color:var(--red);}
@@ -310,12 +314,24 @@
         <select id="staffSelect"></select>
       </div>
       <div class="field">
+        <label>State</label>
+        <select id="stateSelect">
+          <option value="">—</option>
+          <option value="NC">NC</option>
+          <option value="SC">SC</option>
+          <option value="FL">FL</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Date</label>
         <input type="date" id="dateInput">
       </div>
       <div class="field">
         <label>Category</label>
-        <select id="catSelect"></select>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select id="catSelect"></select>
+          <button type="button" class="btn ghost small" id="catAddToggle" title="Add a new category">+ New</button>
+        </div>
         <div class="cat-add-row hidden" id="catAddRow">
           <input type="text" id="newCatName" placeholder="New category name">
           <button class="btn ghost small" id="newCatSave">Save</button>
@@ -452,12 +468,13 @@ function setSyncStatus(ok, label){
   document.getElementById('syncLabel').textContent = label;
 }
 
-async function addEntry({category, description, count, source, dateStr, staff}){
+async function addEntry({category, description, count, source, dateStr, staff, state}){
   const now = new Date();
   const entry = {
     date: dateStr || toKey(currentView==='day' ? currentDate : now),
     category, description, count: count||1, source: source||'manual',
     staff: staff || currentStaff,
+    state: state || null,
     created_at: now.toISOString()
   };
   if(!usingSupabase){ alert('Supabase is not configured in this file.'); return; }
@@ -480,8 +497,10 @@ window.deleteEntry = deleteEntry;
 /* ---------- populate category select ---------- */
 function initCategorySelect(){
   const sel = document.getElementById('catSelect');
-  sel.innerHTML = ALL_CATEGORIES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')
-    + `<option value="__add_new__">+ Add new category…</option>`;
+  sel.innerHTML = ALL_CATEGORIES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+  if(ALL_CATEGORIES.length === 0){
+    sel.innerHTML = `<option value="">No categories yet — click + New</option>`;
+  }
 }
 
 async function fetchCustomCategories(){
@@ -596,7 +615,7 @@ function renderDayView(){
     li.innerHTML = `
       <span class="idx">${String(i+1).padStart(3,'0')}</span>
       <span class="badge" style="--cat-color:${cat.color}">${cat.label}</span>
-      <span class="desc">${escapeHtml(e.description||'')} <span class="src">${time} · ${e.source==='session'?'auto-logged':'manual'}</span></span>
+      <span class="desc">${escapeHtml(e.description||'')}${e.state ? ` <span class="state-tag">${e.state}</span>` : ''} <span class="src">${time} · ${e.source==='session'?'auto-logged':'manual'}</span></span>
       <span class="cnt">×${e.count||1}</span>
       <button class="del" onclick="deleteEntry('${e.id}')" title="Delete">&times;</button>
     `;
@@ -708,7 +727,7 @@ function renderAllView(){
     li.innerHTML = `
       <span class="idx">${dateStr}</span>
       <span class="badge" style="--cat-color:${cat.color}">${cat.label}</span>
-      <span class="desc">${escapeHtml(e.description||'')} <span class="src">${e.source==='session'?'auto-logged':'manual'}</span></span>
+      <span class="desc">${escapeHtml(e.description||'')}${e.state ? ` <span class="state-tag">${e.state}</span>` : ''} <span class="src">${e.source==='session'?'auto-logged':'manual'}</span></span>
       <span class="cnt">×${e.count||1}</span>
       <button class="del" onclick="deleteEntry('${e.id}')" title="Delete">&times;</button>
     `;
@@ -924,12 +943,12 @@ function csvEscape(val){
 }
 
 function toCSV(rows){
-  const header = ['Date','Staff','Category','Description','Count','Source'];
+  const header = ['Date','Staff','State','Category','Description','Count','Source'];
   const lines = [header.join(',')];
   rows.forEach(e=>{
     const cat = (catMap[e.category] || catMap.other).label;
     const staffLabel = (STAFF.find(s=>s.id===(e.staff||STAFF[0].id))||STAFF[0]).label;
-    lines.push([e.date, staffLabel, cat, e.description||'', e.count||1, e.source||'manual'].map(csvEscape).join(','));
+    lines.push([e.date, staffLabel, e.state||'', cat, e.description||'', e.count||1, e.source||'manual'].map(csvEscape).join(','));
   });
   return lines.join('\n');
 }
@@ -1002,8 +1021,10 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   const count = parseInt(document.getElementById('countInput').value,10) || 1;
   const dateStr = document.getElementById('dateInput').value || toKey(currentDate);
   const staff = document.getElementById('staffSelect').value || currentStaff;
+  const state = document.getElementById('stateSelect').value || null;
+  if(!category){ alert('Add a category first using the + New button.'); return; }
   if(!description){ document.getElementById('descInput').focus(); return; }
-  await addEntry({category, description, count, source:'manual', dateStr, staff});
+  await addEntry({category, description, count, source:'manual', dateStr, staff, state});
   document.getElementById('descInput').value = '';
   document.getElementById('countInput').value = '1';
 });
@@ -1011,14 +1032,10 @@ document.getElementById('descInput').addEventListener('keydown', (e)=>{
   if(e.key==='Enter') document.getElementById('addBtn').click();
 });
 
-document.getElementById('catSelect').addEventListener('change', (e)=>{
+document.getElementById('catAddToggle').addEventListener('click', ()=>{
   const addRow = document.getElementById('catAddRow');
-  if(e.target.value === '__add_new__'){
-    addRow.classList.remove('hidden');
-    document.getElementById('newCatName').focus();
-  } else {
-    addRow.classList.add('hidden');
-  }
+  addRow.classList.toggle('hidden');
+  if(!addRow.classList.contains('hidden')) document.getElementById('newCatName').focus();
 });
 
 document.getElementById('newCatSave').addEventListener('click', async ()=>{
@@ -1063,6 +1080,8 @@ async function afterLogin(){
   myProfile = profileData;
   isAdmin = !!profileData.is_admin;
   currentStaff = profileData.staff_id;
+
+  document.getElementById('reportPanel').classList.toggle('hidden', !isAdmin);
 
   initStaffSelect();
   renderStaffTabs();
