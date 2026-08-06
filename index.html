@@ -205,6 +205,20 @@
   .cat-add-row{display:flex;gap:6px;margin-top:4px;}
   .cat-add-row input{flex:1;}
   .cat-add-row.hidden{display:none;}
+  .cat-manage-list{
+    margin-top:6px;border:1px solid var(--line);border-radius:4px;background:#fff;
+    max-height:160px;overflow-y:auto;
+  }
+  .cat-manage-row{
+    display:flex;align-items:center;justify-content:space-between;padding:6px 10px;
+    border-bottom:1px solid var(--line);font-size:12.5px;
+  }
+  .cat-manage-row:last-child{border-bottom:none;}
+  .cat-manage-row .swatch{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:7px;}
+  .cat-manage-row .del-cat{
+    background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;padding:2px 6px;
+  }
+  .cat-manage-empty{padding:10px;font-size:12px;color:var(--ink-soft);}
   /* Report panel */
   .report-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:14px 16px;}
   .report-output{
@@ -331,11 +345,13 @@
         <div style="display:flex;gap:6px;align-items:center;">
           <select id="catSelect"></select>
           <button type="button" class="btn ghost small" id="catAddToggle" title="Add a new category">+ New</button>
+          <button type="button" class="btn ghost small" id="catManageToggle" title="Delete categories">Manage</button>
         </div>
         <div class="cat-add-row hidden" id="catAddRow">
           <input type="text" id="newCatName" placeholder="New category name">
           <button class="btn ghost small" id="newCatSave">Save</button>
         </div>
+        <div class="cat-manage-list hidden" id="catManageList"></div>
       </div>
       <div class="field grow">
         <label>Description</label>
@@ -508,7 +524,10 @@ async function fetchCustomCategories(){
   const { data, error } = await sbClient.from('custom_categories').select('*');
   if(error){ console.error(error); customCategories = []; }
   else {
-    customCategories = (data||[]).map(row => ({ id: row.cat_id, label: row.label, color: row.color }));
+    customCategories = (data||[]).map(row => ({
+      id: row.cat_id, label: row.label, color: row.color,
+      _rowId: row.id, _ownerId: row.user_id
+    }));
   }
   rebuildCategoryState();
 }
@@ -1032,6 +1051,42 @@ document.getElementById('descInput').addEventListener('keydown', (e)=>{
   if(e.key==='Enter') document.getElementById('addBtn').click();
 });
 
+async function deleteCustomCategory(rowId){
+  if(!usingSupabase || !session) return;
+  if(!confirm('Delete this category? Past entries logged under it will show as "Other" going forward.')) return;
+  const { error } = await sbClient.from('custom_categories').delete().eq('id', rowId);
+  if(error){ console.error(error); alert('Could not delete — check console.'); return; }
+  await fetchCustomCategories();
+  initCategorySelect();
+  renderCatManageList();
+  render();
+}
+
+function renderCatManageList(){
+  const wrap = document.getElementById('catManageList');
+  // Only show categories the current user is actually allowed to delete: their own,
+  // or (if admin) anyone's — matches the delete permissions enforced server-side.
+  const deletable = isAdmin ? customCategories : customCategories.filter(c => c._ownerId === session.user.id);
+  if(deletable.length === 0){
+    wrap.innerHTML = `<div class="cat-manage-empty">No custom categories to manage yet.</div>`;
+    return;
+  }
+  wrap.innerHTML = deletable.map(c => `
+    <div class="cat-manage-row">
+      <span><span class="swatch" style="background:${c.color}"></span>${c.label}</span>
+      <button class="del-cat" data-rowid="${c._rowId}" title="Delete">&times;</button>
+    </div>
+  `).join('');
+  wrap.querySelectorAll('.del-cat').forEach(btn=>{
+    btn.addEventListener('click', ()=> deleteCustomCategory(btn.getAttribute('data-rowid')));
+  });
+}
+
+document.getElementById('catManageToggle').addEventListener('click', ()=>{
+  const list = document.getElementById('catManageList');
+  list.classList.toggle('hidden');
+  if(!list.classList.contains('hidden')) renderCatManageList();
+});
 document.getElementById('catAddToggle').addEventListener('click', ()=>{
   const addRow = document.getElementById('catAddRow');
   addRow.classList.toggle('hidden');
