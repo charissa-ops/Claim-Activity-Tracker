@@ -593,8 +593,30 @@ function renderStaffTabs(){
 }
 
 /* ---------- tally strip ---------- */
+function tallyScopeEntries(){
+  // Tally cards reflect whatever period the selected tab shows, not always just "today".
+  const mine = staffEntries();
+  if(currentView === 'week'){
+    const start = new Date(currentDate);
+    const dow = start.getDay();
+    const monday = new Date(start); monday.setDate(start.getDate() - ((dow+6)%7));
+    const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+    const mondayKey = toKey(monday), sundayKey = toKey(sunday);
+    return mine.filter(e=> e.date >= mondayKey && e.date <= sundayKey);
+  } else if(currentView === 'byday' || currentView === 'all'){
+    return mine; // all-time total for this staff member
+  }
+  return mine.filter(e=>e.date===toKey(currentDate)); // 'day' view: just the selected date
+}
+
+function tallyScopeLabel(){
+  if(currentView === 'week') return 'this week';
+  if(currentView === 'byday' || currentView === 'all') return 'all time';
+  return toKey(currentDate) === toKey(new Date()) ? 'today' : 'on ' + toKey(currentDate);
+}
+
 function renderTally(){
-  const dayEntries = staffEntries().filter(e=>e.date===toKey(currentDate));
+  const dayEntries = tallyScopeEntries();
   const counts = {};
   ALL_CATEGORIES.forEach(c=>counts[c.id]=0);
   dayEntries.forEach(e=>{ counts[e.category] = (counts[e.category]||0) + Number(e.count||1); });
@@ -614,7 +636,7 @@ function renderTally(){
   });
   const total = dayEntries.reduce((s,e)=>s+Number(e.count||1),0);
   const staffLabel = (STAFF.find(s=>s.id===currentStaff)||STAFF[0]).label;
-  document.getElementById('totalToday').textContent = `${total} logged today · ${staffLabel}`;
+  document.getElementById('totalToday').textContent = `${total} logged ${tallyScopeLabel()} · ${staffLabel}`;
 }
 
 /* ---------- day view ---------- */
